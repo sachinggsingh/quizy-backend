@@ -3,8 +3,10 @@ package model
 import "go.mongodb.org/mongo-driver/bson/primitive"
 
 type User struct {
-	ID    primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Email string             `bson:"email" json:"email"`
-	Name  string             `bson:"name" json:"name"`
-	Score int                `bson:"score" json:"score"`
+	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Email        string             `bson:"email" json:"email"`
+	Name         string             `bson:"name" json:"name"`
+	Score        int                `bson:"score" json:"score"`
+	Password     string             `bson:"password" json:"-"`
+	RefreshToken string             `bson:"refresh_token,omitempty" json:"-"`
 }

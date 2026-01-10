@@ -66,6 +66,17 @@ func (r *UserRepo) UpdateScore(ctx context.Context, userID primitive.ObjectID, s
 	return err
 }
 
+func (r *UserRepo) UpdateRefreshToken(ctx context.Context, userID primitive.ObjectID, refreshToken string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	filter := bson.M{"_id": userID}
+	update := bson.M{"$set": bson.M{"refresh_token": refreshToken}}
+
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	return err
+}
+
 func (r *UserRepo) GetTopUsers(ctx context.Context, limit int64) ([]model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
