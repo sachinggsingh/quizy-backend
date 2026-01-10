@@ -13,12 +13,14 @@ import (
 type RestHandler struct {
 	userService *service.UserService
 	quizService *service.QuizService
+	comment     *service.CommentService
 }
 
-func NewRestHandler(userService *service.UserService, quizService *service.QuizService) *RestHandler {
+func NewRestHandler(userService *service.UserService, quizService *service.QuizService, comment *service.CommentService) *RestHandler {
 	return &RestHandler{
 		userService: userService,
 		quizService: quizService,
+		comment:     comment,
 	}
 }
 
@@ -131,4 +133,29 @@ func (h *RestHandler) SubmitQuiz(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(map[string]int{"score": score})
+}
+
+func (h *RestHandler) CreateComment(w http.ResponseWriter, r *http.Request) {
+	var comment model.Comment
+	if err := json.NewDecoder(r.Body).Decode(&comment); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.comment.CreateComment(r.Context(), &comment); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(comment)
+}
+
+func (h *RestHandler) GetComments(w http.ResponseWriter, r *http.Request) {
+	quizIDStr := r.URL.Query().Get("quiz_id")
+	quizID, _ := primitive.ObjectIDFromHex(quizIDStr)
+	comments, err := h.comment.FindAllComments(r.Context(), quizID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(comments)
 }

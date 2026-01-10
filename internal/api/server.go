@@ -24,14 +24,16 @@ func NewServer(db *mongo.Database) *Server {
 	// 2. Repositories
 	userRepo := repo.NewUserRepo(db)
 	quizRepo := repo.NewQuizRepo(db)
+	commentRepo := repo.NewCommentRepo(db)
 
 	// 3. Services
 	leaderboardService := service.NewLeaderboardService(userRepo)
 	userService := service.NewUserService(userRepo)
 	quizService := service.NewQuizService(quizRepo, userRepo, leaderboardService)
+	commentService := service.NewCommentService(commentRepo)
 
 	// 4. Handlers
-	restHandler := handler.NewRestHandler(userService, quizService)
+	restHandler := handler.NewRestHandler(userService, quizService, commentService)
 	wsHandler := handler.NewWSHandler(leaderboardService)
 
 	// 5. Router
@@ -42,9 +44,13 @@ func NewServer(db *mongo.Database) *Server {
 	r.HandleFunc("/users", restHandler.CreateUser).Methods("POST")
 	r.HandleFunc("/login", restHandler.Login).Methods("POST")
 	r.HandleFunc("/refresh-token", restHandler.RefreshToken).Methods("POST")
+	// quiz routes
 	r.HandleFunc("/quizzes", restHandler.CreateQuiz).Methods("POST")
 	r.HandleFunc("/quizzes", restHandler.GetQuizzes).Methods("GET")
 	r.HandleFunc("/quizzes/{id}/submit", restHandler.SubmitQuiz).Methods("POST")
+	// comment routes
+	r.HandleFunc("/comments", restHandler.CreateComment).Methods("POST")
+	r.HandleFunc("/comments", restHandler.GetComments).Methods("GET")
 
 	// WebSocket Route
 	r.HandleFunc("/ws/leaderboard", wsHandler.HandleLeaderboard)

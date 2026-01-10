@@ -13,4 +13,6 @@ type Quiz struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Title     string             `bson:"title" json:"title"`
 	Questions []Question         `bson:"questions" json:"questions"`
+	QuizID    primitive.ObjectID `bson:"quiz_id" json:"quiz_id"`
+	UserID    primitive.ObjectID `bson:"user_id" json:"user_id"`
 }
