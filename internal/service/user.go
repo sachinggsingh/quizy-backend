@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 
 	"errors"
 	"time"
@@ -23,6 +24,52 @@ func NewUserService(repo *repo.UserRepo) *UserService {
 	return &UserService{repo: repo}
 }
 
+func (s *UserService) GetProfile(ctx context.Context, id primitive.ObjectID) (*model.User, error) {
+	return s.repo.FindByID(ctx, id)
+}
+
+func (s *UserService) SubmitQuizResult(ctx context.Context, userID primitive.ObjectID, quizID primitive.ObjectID, score int) error {
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// Check if already completed
+	alreadyCompleted := slices.Contains(user.CompletedQuizIDs, quizID)
+
+	newTotalScore := user.Score
+	newCompletedQuizzes := user.CompletedQuizzes
+	newAverageScore := user.AverageScore
+
+	if alreadyCompleted {
+		return errors.New("quiz already attempted")
+	}
+
+	newTotalScore += score
+	newCompletedQuizzes++
+	// Re-calculate average: (old_avg * old_count + new_score) / new_count
+	newAverageScore = (user.AverageScore*float64(user.CompletedQuizzes) + float64(score)) / float64(newCompletedQuizzes)
+	user.CompletedQuizIDs = append(user.CompletedQuizIDs, quizID)
+
+	// Simplified streak: increment if score > 70, else reset?
+	// Real streak should look at daily activity, but for now let's just increment if they did well
+	newStreak := user.Streak
+	if score >= 70 {
+		newStreak++
+	} else {
+		newStreak = 0
+	}
+
+	// Update Activity
+	today := time.Now().Format("2006-01-02")
+	if user.Activity == nil {
+		user.Activity = make(map[string]int)
+	}
+	user.Activity[today]++
+
+	return s.repo.UpdateStats(ctx, userID, newTotalScore, newCompletedQuizzes, newAverageScore, newStreak, user.Activity, user.CompletedQuizIDs)
+}
+
 func (s *UserService) CreateUser(ctx context.Context, name, email, password string) (*model.User, error) {
 	existing, _ := s.repo.FindByEmail(ctx, email)
 	if existing != nil {
@@ -38,7 +85,6 @@ func (s *UserService) CreateUser(ctx context.Context, name, email, password stri
 		Name:     name,
 		Email:    email,
 		Password: string(hashedPassword),
-		Score:    0,
 	}
 
 	if err := s.repo.Create(ctx, user); err != nil {

@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"time"
 
 	"github.com/sachinggsingh/quiz/internal/model"
 	"github.com/sachinggsingh/quiz/internal/repo"
@@ -22,59 +25,108 @@ func NewQuizService(quizRepo repo.QuizRepo, userRepo *repo.UserRepo, leaderboard
 	}
 }
 
-func (s *QuizService) CreateQuiz(ctx context.Context, title string, questions []model.Question) (*model.Quiz, error) {
+func (s *QuizService) CreateQuiz(ctx context.Context, title string, difficulty string, questions []model.Question, points int) (*model.Quiz, error) {
 	quiz := &model.Quiz{
-		Title:     title,
-		Questions: questions,
+		Title:      title,
+		Difficulty: difficulty,
+		Questions:  questions,
+		Points:     points,
 	}
 	err := s.quizRepo.Create(ctx, quiz)
 	return quiz, err
 }
 
-func (s *QuizService) GetQuizzes(ctx context.Context) ([]model.Quiz, error) {
-	return s.quizRepo.FindAll(ctx)
+func (s *QuizService) GetQuizzes(ctx context.Context, userID primitive.ObjectID) ([]model.Quiz, error) {
+	quizzes, err := s.quizRepo.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// If user is authenticated, check which quizzes they've completed
+	if !userID.IsZero() {
+		user, err := s.userRepo.FindByID(ctx, userID)
+		if err == nil {
+			for i := range quizzes {
+				if slices.Contains(user.CompletedQuizIDs, quizzes[i].ID) {
+					quizzes[i].Attempted = true
+				}
+			}
+		}
+	}
+
+	return quizzes, nil
 }
 
-func (s *QuizService) SubmitQuiz(ctx context.Context, userID primitive.ObjectID, quizID primitive.ObjectID, answers map[string]int) (int, error) {
+func (s *QuizService) GetQuizByID(ctx context.Context, id primitive.ObjectID) (*model.Quiz, error) {
+	return s.quizRepo.FindByID(ctx, id)
+}
+
+func (s *QuizService) SubmitQuiz(ctx context.Context, userID primitive.ObjectID, quizID primitive.ObjectID, answers map[string]string) (int, error) {
 	quiz, err := s.quizRepo.FindByID(ctx, quizID)
 	if err != nil {
 		return 0, err
 	}
 
-	score := 0
-	for _, q := range quiz.Questions {
-		if ans, ok := answers[q.ID]; ok {
-			if ans == q.Answer {
-				score += 10 // 10 points per question
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+
+	// Calculate points
+	correctCount := 0
+	for i, q := range quiz.Questions {
+		idxStr := fmt.Sprintf("%d", i)
+		if ansStr, ok := answers[idxStr]; ok {
+			if ansStr == fmt.Sprintf("%d", q.Answer) {
+				correctCount++
 			}
 		}
 	}
-
-	// Update User Score (Cumulative)
-	// First get current user to add score?
-	// Or just update. For complexity, let's assume we just ADD to their score.
-	// But `UpdateScore` in repo sets it. So let's fetch first.
-	user, err := s.userRepo.FindByID(ctx, userID) // Wait, generic FetchByID needed in repo?
-	// I implemented FindByEmail, but not FindByID in UserRepo? Let me check.
-	// I implemented StartLine: FindByEmail. I need FindByID!
-
-	// TEMPORARY FIX: I will assume the repo has `FindByID` or I need to add it.
-	// I recall adding `GetTopUsers` and `Create` and `FindByEmail`.
-	// I suspect I missed `FindByID` in UserRepo. I need to fix that.
-
-	// For now, I'll assume FindByID exists or I'll implement it in the next step.
-
-	currentScore := 0
-	if user != nil {
-		currentScore = user.Score
-	} else {
-		// If user not found logic...
-		// Actually, let's assume valid user.
-		// If I missed FindByID, this code will fail to compile. I should check UserRepo content.
+	// claculating points
+	earnedPoints := 0
+	if len(quiz.Questions) > 0 {
+		earnedPoints = (quiz.Points * correctCount) / len(quiz.Questions)
 	}
 
-	newScore := currentScore + score
-	err = s.userRepo.UpdateScore(ctx, userID, newScore)
+	// Logic to update user stats integrated here
+	alreadyCompleted := slices.Contains(user.CompletedQuizIDs, quizID)
+
+	newTotalScore := user.Score
+	newCompletedQuizzes := user.CompletedQuizzes
+	newAverageScore := user.AverageScore
+
+	if alreadyCompleted {
+		return 0, fmt.Errorf("quiz already attempted")
+	}
+
+	newTotalScore += earnedPoints
+	newCompletedQuizzes++
+	// Re-calculate quiz percentage for average score
+	quizPercentage := 0
+	if len(quiz.Questions) > 0 {
+		quizPercentage = (correctCount * 100) / len(quiz.Questions)
+	}
+	newAverageScore = (user.AverageScore*float64(user.CompletedQuizzes) + float64(quizPercentage)) / float64(newCompletedQuizzes)
+	user.CompletedQuizIDs = append(user.CompletedQuizIDs, quizID)
+
+	newStreak := user.Streak
+	if len(quiz.Questions) > 0 {
+		quizPercentage = (correctCount * 100) / len(quiz.Questions)
+	}
+	if quizPercentage >= 70 {
+		newStreak++
+	} else {
+		newStreak = 0
+	}
+
+	// Update Activity
+	today := time.Now().Format("2006-01-02")
+	if user.Activity == nil {
+		user.Activity = make(map[string]int)
+	}
+	user.Activity[today]++
+
+	err = s.userRepo.UpdateStats(ctx, userID, newTotalScore, newCompletedQuizzes, newAverageScore, newStreak, user.Activity, user.CompletedQuizIDs)
 	if err != nil {
 		return 0, err
 	}
@@ -82,5 +134,5 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, userID primitive.ObjectID,
 	// TRIGGER REAL-TIME UPDATE
 	s.leaderboard.BroadcastUpdate()
 
-	return score, nil
+	return earnedPoints, nil
 }

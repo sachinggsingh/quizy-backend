@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type QuizRepo interface {
@@ -23,7 +24,7 @@ type quizRepo struct {
 
 func NewQuizRepo(db *mongo.Database) *quizRepo {
 	return &quizRepo{
-		collection: db.Collection("quizzes"),
+		collection: db.Collection("quizzes", &options.CollectionOptions{}),
 	}
 }
 
@@ -32,8 +33,15 @@ func (r *quizRepo) Create(ctx context.Context, quiz *model.Quiz) error {
 	defer cancel()
 
 	quiz.ID = primitive.NewObjectID()
+	quiz.CreatedAt, _ = time.Parse(time.RFC1123, time.Now().Format(time.RFC1123))
+	quiz.UpdatedAt, _ = time.Parse(time.RFC1123, time.Now().Format(time.RFC1123))
 	if quiz.QuizID.IsZero() {
-		quiz.QuizID = primitive.NewObjectID()
+		quiz.QuizID = quiz.ID
+	}
+	for i := range quiz.Questions {
+		if quiz.Questions[i].ID.IsZero() {
+			quiz.Questions[i].ID = primitive.NewObjectID()
+		}
 	}
 	_, err := r.collection.InsertOne(ctx, quiz)
 	return err

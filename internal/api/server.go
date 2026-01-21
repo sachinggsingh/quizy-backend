@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 	"github.com/sachinggsingh/quiz/internal/api/handler"
 	"github.com/sachinggsingh/quiz/internal/repo"
 	"github.com/sachinggsingh/quiz/internal/service"
@@ -44,9 +45,11 @@ func NewServer(db *mongo.Database) *Server {
 	r.HandleFunc("/users", restHandler.CreateUser).Methods("POST")
 	r.HandleFunc("/login", restHandler.Login).Methods("POST")
 	r.HandleFunc("/refresh-token", restHandler.RefreshToken).Methods("POST")
+	r.HandleFunc("/me", restHandler.GetMe).Methods("GET")
 	// quiz routes
 	r.HandleFunc("/quizzes", restHandler.CreateQuiz).Methods("POST")
 	r.HandleFunc("/quizzes", restHandler.GetQuizzes).Methods("GET")
+	r.HandleFunc("/quizzes/{id}", restHandler.GetQuiz).Methods("GET")
 	r.HandleFunc("/quizzes/{id}/submit", restHandler.SubmitQuiz).Methods("POST")
 	// comment routes
 	r.HandleFunc("/comments", restHandler.CreateComment).Methods("POST")
@@ -55,9 +58,16 @@ func NewServer(db *mongo.Database) *Server {
 	// WebSocket Route
 	r.HandleFunc("/ws/leaderboard", wsHandler.HandleLeaderboard)
 
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:3001"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowCredentials: true,
+	})
+
 	return &Server{
 		httpServer: &http.Server{
-			Handler:      r,
+			Handler:      c.Handler(r),
 			Addr:         ":8080",
 			WriteTimeout: 15 * time.Second,
 			ReadTimeout:  15 * time.Second,

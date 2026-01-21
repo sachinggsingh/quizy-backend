@@ -22,42 +22,38 @@ func NewLeaderboardService(userRepo *repo.UserRepo) *LeaderboardService {
 	ls := &LeaderboardService{
 		userRepo:  userRepo,
 		clients:   make(map[*websocket.Conn]bool),
-		broadcast: make(chan []byte),
+		broadcast: make(chan []byte, 10),
 	}
 	go ls.run()
 	return ls
 }
 
-// func (ls *LeaderboardService) run() {
-// 	for {
-// 		message := <-ls.broadcast
-// 		ls.mu.Lock()
-// 		for client := range ls.clients {
-// 			err := client.WriteMessage(websocket.TextMessage, message)
-// 			if err != nil {
-// 				log.Printf("Websocket error: %v", err)
-// 				client.Close()
-// 				delete(ls.clients, client)
-// 			}
-// 		}
-// 		ls.mu.Unlock()
-// 	}
-// }
-
-// it write message to all clients
 func (ls *LeaderboardService) run() {
 	for {
 		message := <-ls.broadcast
+
 		ls.mu.Lock()
-		for clients := range ls.clients {
-			err := clients.WriteMessage(websocket.TextMessage, message)
-			if err != nil {
-				log.Printf("Websocket error: %v", err)
-				clients.Close()
-				delete(ls.clients, clients)
-			}
+		activeClients := make([]*websocket.Conn, 0, len(ls.clients))
+		for client := range ls.clients {
+			activeClients = append(activeClients, client)
 		}
 		ls.mu.Unlock()
+
+		for _, client := range activeClients {
+			err := client.WriteMessage(websocket.TextMessage, message)
+			if err != nil {
+				// Don't log common closure errors to keep logs clean
+				if err != websocket.ErrCloseSent && !websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+					log.Printf("Websocket write error: %v", err)
+				}
+
+				// Clean up the client
+				client.Close()
+				ls.mu.Lock()
+				delete(ls.clients, client)
+				ls.mu.Unlock()
+			}
+		}
 	}
 }
 
@@ -86,7 +82,7 @@ func (ls *LeaderboardService) BroadcastUpdate() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	topUsers, err := ls.userRepo.GetTopUsers(ctx, 10)
+	topUsers, _, err := ls.userRepo.GetTopUsers(ctx, 1, 10)
 	if err != nil {
 		log.Printf("Error fetching top users: %v", err)
 		return
