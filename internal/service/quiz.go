@@ -104,7 +104,6 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, userID primitive.ObjectID,
 	}
 
 	newTotalScore += earnedPoints
-	newCompletedQuizzes++
 	// Re-calculate quiz percentage for average score
 	quizPercentage := 0
 	if len(quiz.Questions) > 0 {

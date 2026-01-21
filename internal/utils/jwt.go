@@ -22,17 +22,17 @@ func GenerateToken(userId string, email string) (string, string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, tokenClaims)
-	tokenString, err := token.SignedString(config.LoadEnv().JWT_KEY)
+	tokenString, err := token.SignedString([]byte(config.LoadEnv().JWT_KEY))
 	if err != nil {
 		return "", "", err
 	}
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims)
-	refreshTokenStirng, err := refreshToken.SignedString(config.LoadEnv().JWT_KEY)
+	refreshTokenString, err := refreshToken.SignedString([]byte(config.LoadEnv().JWT_KEY))
 	if err != nil {
 		return "", "", err
 	}
 
-	return tokenString, refreshTokenStirng, nil
+	return tokenString, refreshTokenString, nil
 }
 
 func TokenValidator(token string) (*jwt.Token, error) {

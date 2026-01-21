@@ -38,8 +38,8 @@ func (h *RestHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(user)
 	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(user)
 }
 
 func (h *RestHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -58,11 +58,11 @@ func (h *RestHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 	})
-	w.WriteHeader(http.StatusOK)
 }
 
 func (h *RestHandler) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -102,8 +102,8 @@ func (h *RestHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(user)
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(user)
 }
 
 func (h *RestHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
@@ -121,8 +121,8 @@ func (h *RestHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
 		"access_token": accessToken,
 	})
-	w.WriteHeader(http.StatusOK)
 }

@@ -52,7 +52,7 @@ func NewServer(db *mongo.Database) *Server {
 	r.HandleFunc("/quizzes", quizHandler.CreateQuiz).Methods("POST")
 	r.HandleFunc("/quizzes", quizHandler.GetQuizzes).Methods("GET")
 	r.HandleFunc("/quizzes/{id}", quizHandler.GetQuiz).Methods("GET")
-	// r.HandleFunc("/quizzes/{id}/submit", userHandler.SubmitQuiz).Methods("POST")
+	r.HandleFunc("/quizzes/{id}/submit", quizHandler.SubmitQuiz).Methods("POST")
 	// comment routes
 	r.HandleFunc("/comments", commentHandler.CreateComment).Methods("POST")
 	r.HandleFunc("/comments", commentHandler.GetComments).Methods("GET")
