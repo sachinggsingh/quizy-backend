@@ -34,5 +34,12 @@ func (cs *CommentService) CreateComment(ctx context.Context, comment *model.Comm
 }
 
 func (cs *CommentService) FindAllComments(ctx context.Context, quizID primitive.ObjectID) ([]model.Comment, error) {
+	if quizID.IsZero() {
+		return cs.CommentRepo.GetAllComments(ctx)
+	}
 	return cs.CommentRepo.GetCommentsByQuizID(ctx, quizID)
+}
+
+func (cs *CommentService) FindAll(ctx context.Context) ([]model.Comment, error) {
+	return cs.CommentRepo.GetAllComments(ctx)
 }

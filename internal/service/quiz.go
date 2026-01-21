@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
+
+	// "fmt"
+	"slices"
+	// "time"
 
 	"github.com/sachinggsingh/quiz/internal/model"
 	"github.com/sachinggsingh/quiz/internal/repo"
@@ -72,17 +75,17 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, userID primitive.ObjectID,
 		return 0, err
 	}
 
-	// Calculate points
+	// calculating correct answers
 	correctCount := 0
 	for i, q := range quiz.Questions {
-		idxStr := fmt.Sprintf("%d", i)
+		idxStr := fmt.Sprintf("%d", i) // converting int to string
 		if ansStr, ok := answers[idxStr]; ok {
 			if ansStr == fmt.Sprintf("%d", q.Answer) {
 				correctCount++
 			}
 		}
 	}
-	// claculating points
+	// calculating points
 	earnedPoints := 0
 	if len(quiz.Questions) > 0 {
 		earnedPoints = (quiz.Points * correctCount) / len(quiz.Questions)
@@ -91,8 +94,9 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, userID primitive.ObjectID,
 	// Logic to update user stats integrated here
 	alreadyCompleted := slices.Contains(user.CompletedQuizIDs, quizID)
 
+	totalQuizzes := len(user.CompletedQuizIDs)
 	newTotalScore := user.Score
-	newCompletedQuizzes := user.CompletedQuizzes
+	newCompletedQuizzes := totalQuizzes + 1
 	newAverageScore := user.AverageScore
 
 	if alreadyCompleted {
@@ -106,7 +110,7 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, userID primitive.ObjectID,
 	if len(quiz.Questions) > 0 {
 		quizPercentage = (correctCount * 100) / len(quiz.Questions)
 	}
-	newAverageScore = (user.AverageScore*float64(user.CompletedQuizzes) + float64(quizPercentage)) / float64(newCompletedQuizzes)
+	newAverageScore = (user.AverageScore*float64(totalQuizzes) + float64(quizPercentage)) / float64(newCompletedQuizzes)
 	user.CompletedQuizIDs = append(user.CompletedQuizIDs, quizID)
 
 	newStreak := user.Streak

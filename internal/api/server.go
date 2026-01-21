@@ -34,7 +34,9 @@ func NewServer(db *mongo.Database) *Server {
 	commentService := service.NewCommentService(commentRepo)
 
 	// 4. Handlers
-	restHandler := handler.NewRestHandler(userService, quizService, commentService)
+	userHandler := handler.NewRestHandler(userService)
+	quizHandler := handler.NewQuizHandler(quizService, userService)
+	commentHandler := handler.NewCommentHandler(commentService, userService)
 	wsHandler := handler.NewWSHandler(leaderboardService)
 
 	// 5. Router
@@ -42,18 +44,18 @@ func NewServer(db *mongo.Database) *Server {
 
 	// REST Routes
 	r.HandleFunc("/", HiFromBackendServer)
-	r.HandleFunc("/users", restHandler.CreateUser).Methods("POST")
-	r.HandleFunc("/login", restHandler.Login).Methods("POST")
-	r.HandleFunc("/refresh-token", restHandler.RefreshToken).Methods("POST")
-	r.HandleFunc("/me", restHandler.GetMe).Methods("GET")
+	r.HandleFunc("/users", userHandler.CreateUser).Methods("POST")
+	r.HandleFunc("/login", userHandler.Login).Methods("POST")
+	r.HandleFunc("/refresh-token", userHandler.RefreshToken).Methods("POST")
+	r.HandleFunc("/me", userHandler.GetMe).Methods("GET")
 	// quiz routes
-	r.HandleFunc("/quizzes", restHandler.CreateQuiz).Methods("POST")
-	r.HandleFunc("/quizzes", restHandler.GetQuizzes).Methods("GET")
-	r.HandleFunc("/quizzes/{id}", restHandler.GetQuiz).Methods("GET")
-	r.HandleFunc("/quizzes/{id}/submit", restHandler.SubmitQuiz).Methods("POST")
+	r.HandleFunc("/quizzes", quizHandler.CreateQuiz).Methods("POST")
+	r.HandleFunc("/quizzes", quizHandler.GetQuizzes).Methods("GET")
+	r.HandleFunc("/quizzes/{id}", quizHandler.GetQuiz).Methods("GET")
+	// r.HandleFunc("/quizzes/{id}/submit", userHandler.SubmitQuiz).Methods("POST")
 	// comment routes
-	r.HandleFunc("/comments", restHandler.CreateComment).Methods("POST")
-	r.HandleFunc("/comments", restHandler.GetComments).Methods("GET")
+	r.HandleFunc("/comments", commentHandler.CreateComment).Methods("POST")
+	r.HandleFunc("/comments", commentHandler.GetComments).Methods("GET")
 
 	// WebSocket Route
 	r.HandleFunc("/ws/leaderboard", wsHandler.HandleLeaderboard)

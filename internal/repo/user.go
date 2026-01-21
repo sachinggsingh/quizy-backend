@@ -59,7 +59,22 @@ func (r *UserRepo) Create(ctx context.Context, user *model.User) error {
 	_, err := r.collection.InsertOne(ctx, user)
 	return err
 }
+func (r *UserRepo) UpdateRefreshToken(ctx context.Context, userID primitive.ObjectID, refreshToken string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
+	filter := bson.M{"_id": userID}
+	updatedAt, _ := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+	update := bson.M{"$set": bson.M{
+		"refresh_token": refreshToken,
+		"updated_at":    updatedAt,
+	}}
+
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	return err
+}
+
+// returns the array of details of the user
 func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -72,6 +87,7 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*model.User, 
 	return &user, nil
 }
 
+// returning the user
 func (r *UserRepo) FindByID(ctx context.Context, id primitive.ObjectID) (*model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -118,22 +134,7 @@ func (r *UserRepo) UpdateScore(ctx context.Context, userID primitive.ObjectID, s
 	return err
 }
 
-func (r *UserRepo) UpdateRefreshToken(ctx context.Context, userID primitive.ObjectID, refreshToken string) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	filter := bson.M{"_id": userID}
-	updatedAt, _ := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
-	update := bson.M{"$set": bson.M{
-		"refresh_token": refreshToken,
-		"updated_at":    updatedAt,
-	}}
-
-	_, err := r.collection.UpdateOne(ctx, filter, update)
-	return err
-}
-
-// GetTopUsers returns a page of users sorted by score descending and the total number of users
+// GetTopUsers returns a page of users sorted by score descending and the total number of users paginated
 func (r *UserRepo) GetTopUsers(ctx context.Context, page int64, limit int64) ([]model.User, int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

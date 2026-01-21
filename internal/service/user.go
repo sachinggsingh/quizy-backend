@@ -3,18 +3,17 @@ package service
 import (
 	"context"
 	"slices"
+	"time"
 
 	"errors"
-	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/sachinggsingh/quiz/internal/model"
 	"github.com/sachinggsingh/quiz/internal/repo"
+	"github.com/sachinggsingh/quiz/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 )
-
-var jwtSecret = []byte("your_secret_key") // In production, load from env
 
 type UserService struct {
 	repo *repo.UserRepo
@@ -38,38 +37,33 @@ func (s *UserService) SubmitQuizResult(ctx context.Context, userID primitive.Obj
 	alreadyCompleted := slices.Contains(user.CompletedQuizIDs, quizID)
 
 	newTotalScore := user.Score
-	newCompletedQuizzes := user.CompletedQuizzes
 	newAverageScore := user.AverageScore
 
 	if alreadyCompleted {
 		return errors.New("quiz already attempted")
 	}
 
+	countTotalQuizzes := len(user.CompletedQuizIDs)
+
 	newTotalScore += score
-	newCompletedQuizzes++
 	// Re-calculate average: (old_avg * old_count + new_score) / new_count
-	newAverageScore = (user.AverageScore*float64(user.CompletedQuizzes) + float64(score)) / float64(newCompletedQuizzes)
+	newAverageScore = (user.AverageScore*float64(countTotalQuizzes) + float64(score)) / float64(countTotalQuizzes+1)
 	user.CompletedQuizIDs = append(user.CompletedQuizIDs, quizID)
 
-	// Simplified streak: increment if score > 70, else reset?
-	// Real streak should look at daily activity, but for now let's just increment if they did well
-	newStreak := user.Streak
-	if score >= 70 {
-		newStreak++
-	} else {
-		newStreak = 0
-	}
+	// Simplified streak: increment on every submission
+	newStreak := user.Streak + 1
 
 	// Update Activity
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().Format(time.DateOnly)
 	if user.Activity == nil {
 		user.Activity = make(map[string]int)
 	}
 	user.Activity[today]++
 
-	return s.repo.UpdateStats(ctx, userID, newTotalScore, newCompletedQuizzes, newAverageScore, newStreak, user.Activity, user.CompletedQuizIDs)
+	return s.repo.UpdateStats(ctx, userID, newTotalScore, countTotalQuizzes, newAverageScore, newStreak, user.Activity, user.CompletedQuizIDs)
 }
 
+// creating the user and hashing the password
 func (s *UserService) CreateUser(ctx context.Context, name, email, password string) (*model.User, error) {
 	existing, _ := s.repo.FindByEmail(ctx, email)
 	if existing != nil {
@@ -93,7 +87,8 @@ func (s *UserService) CreateUser(ctx context.Context, name, email, password stri
 	return user, nil
 }
 
-func (s *UserService) Login(ctx context.Context, email, password string) (string, string, error) {
+// login and generating the token
+func (s *UserService) Login(ctx context.Context, email string, password string) (string, string, error) {
 	user, err := s.repo.FindByEmail(ctx, email)
 	if err != nil {
 		return "", "", errors.New("invalid credentials")
@@ -103,39 +98,22 @@ func (s *UserService) Login(ctx context.Context, email, password string) (string
 		return "", "", errors.New("invalid credentials")
 	}
 
-	// Generate Access Token
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID.Hex(),
-		"exp":     time.Now().Add(15 * time.Minute).Unix(),
-	})
-	accessTokenString, err := accessToken.SignedString(jwtSecret)
-	if err != nil {
-		return "", "", err
-	}
-
-	// Generate Refresh Token
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID.Hex(),
-		"exp":     time.Now().Add(7 * 24 * time.Hour).Unix(),
-	})
-	refreshTokenString, err := refreshToken.SignedString(jwtSecret)
+	// generateToken
+	access_Token, refresh_Token, err := utils.GenerateToken(user.UserId.Hex(), email)
 	if err != nil {
 		return "", "", err
 	}
 
 	// Store Refresh Token in DB
-	if err := s.repo.UpdateRefreshToken(ctx, user.ID, refreshTokenString); err != nil {
+	if err := s.repo.UpdateRefreshToken(ctx, user.ID, refresh_Token); err != nil {
 		return "", "", err
 	}
 
-	return accessTokenString, refreshTokenString, nil
+	return access_Token, refresh_Token, nil
 }
 
 func (s *UserService) RefreshToken(ctx context.Context, refreshTokenStr string) (string, error) {
-	token, err := jwt.Parse(refreshTokenStr, func(token *jwt.Token) (interface{}, error) {
-		return jwtSecret, nil
-	})
-
+	token, err := utils.TokenValidator(refreshTokenStr)
 	if err != nil || !token.Valid {
 		return "", errors.New("invalid refresh token")
 	}
@@ -145,7 +123,16 @@ func (s *UserService) RefreshToken(ctx context.Context, refreshTokenStr string) 
 		return "", errors.New("invalid token claims")
 	}
 
-	userIDHex := claims["user_id"].(string)
+	userIDHex, ok := claims["user_id"].(string)
+	if !ok {
+		return "", errors.New("invalid token claims")
+	}
+
+	email, ok := claims["email"].(string)
+	if !ok {
+		return "", errors.New("invalid token claims")
+	}
+
 	userID, err := primitive.ObjectIDFromHex(userIDHex)
 	if err != nil {
 		return "", errors.New("invalid user id in token")
@@ -161,10 +148,6 @@ func (s *UserService) RefreshToken(ctx context.Context, refreshTokenStr string) 
 		return "", errors.New("refresh token mismatch")
 	}
 
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userIDHex,
-		"exp":     time.Now().Add(15 * time.Minute).Unix(),
-	})
-
-	return accessToken.SignedString(jwtSecret)
+	access_Token, _, err := utils.GenerateToken(userIDHex, email)
+	return access_Token, err
 }

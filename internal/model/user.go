@@ -13,13 +13,12 @@ type User struct {
 	Score            int                  `bson:"score" json:"score"`
 	Password         string               `bson:"password" json:"-"`
 	RefreshToken     string               `bson:"refresh_token,omitempty" json:"-"`
-	CompletedQuizzes int                  `bson:"completed_quizzes" json:"completedQuizzes"`
-	AverageScore     float64              `bson:"average_score" json:"averageScore"`
+	AverageScore     float64              `bson:"average_score" json:"average_score"`
 	Rank             int                  `bson:"rank" json:"rank"`
 	Streak           int                  `bson:"streak" json:"streak"`
 	Activity         map[string]int       `bson:"activity" json:"activity"`
-	CompletedQuizIDs []primitive.ObjectID `bson:"completed_quiz_ids" json:"completedQuizIds"`
-	UserId           primitive.ObjectID   `bson:"user_id" json:"userId"`
-	CreatedAt        time.Time            `bson:"created_at" json:"createdAt"`
-	UpdatedAt        time.Time            `bson:"updated_at" json:"updatedAt"`
+	CompletedQuizIDs []primitive.ObjectID `bson:"completed_quiz_ids" json:"completed_quiz_ids"`
+	UserId           primitive.ObjectID   `bson:"user_id" json:"user_id"`
+	CreatedAt        time.Time            `bson:"created_at" json:"created_at"`
+	UpdatedAt        time.Time            `bson:"updated_at" json:"updated_at"`
 }

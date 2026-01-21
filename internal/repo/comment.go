@@ -12,6 +12,7 @@ import (
 type CommentRepo interface {
 	CreateComment(ctx context.Context, comment *model.Comment) error
 	GetCommentsByQuizID(ctx context.Context, quizID primitive.ObjectID) ([]model.Comment, error)
+	GetAllComments(ctx context.Context) ([]model.Comment, error)
 }
 
 type commentRepoImpl struct {
@@ -35,7 +36,20 @@ func (c *commentRepoImpl) GetCommentsByQuizID(ctx context.Context, quizID primit
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-	var comments []model.Comment
+	comments := []model.Comment{}
+	if err := cursor.All(ctx, &comments); err != nil {
+		return nil, err
+	}
+	return comments, nil
+}
+
+func (c *commentRepoImpl) GetAllComments(ctx context.Context) ([]model.Comment, error) {
+	cursor, err := c.collection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	comments := []model.Comment{}
 	if err := cursor.All(ctx, &comments); err != nil {
 		return nil, err
 	}
