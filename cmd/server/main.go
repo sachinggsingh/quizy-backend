@@ -16,7 +16,7 @@ func main() {
 	}
 
 	// 2. Initialize and Run Server
-	server := api.NewServer(db.DB)
+	server := api.NewServer(db.DB, env)
 	if err := server.Run(); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}

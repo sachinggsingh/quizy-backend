@@ -2,79 +2,23 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"log"
-	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/sachinggsingh/quiz/internal/repo"
+	"github.com/sachinggsingh/quiz/internal/ws"
 )
 
 type LeaderboardService struct {
-	userRepo  *repo.UserRepo
-	clients   map[*websocket.Conn]bool
-	broadcast chan []byte
-	mu        sync.Mutex
+	userRepo *repo.UserRepo
+	hub      *ws.Hub
 }
 
-func NewLeaderboardService(userRepo *repo.UserRepo) *LeaderboardService {
-	ls := &LeaderboardService{
-		userRepo:  userRepo,
-		clients:   make(map[*websocket.Conn]bool),
-		broadcast: make(chan []byte, 10),
+func NewLeaderboardService(userRepo *repo.UserRepo, hub *ws.Hub) *LeaderboardService {
+	return &LeaderboardService{
+		userRepo: userRepo,
+		hub:      hub,
 	}
-	go ls.run()
-	return ls
-}
-
-func (ls *LeaderboardService) run() {
-	for {
-		message := <-ls.broadcast
-
-		ls.mu.Lock()
-		activeClients := make([]*websocket.Conn, 0, len(ls.clients))
-		for client := range ls.clients {
-			activeClients = append(activeClients, client)
-		}
-		ls.mu.Unlock()
-
-		for _, client := range activeClients {
-			err := client.WriteMessage(websocket.TextMessage, message)
-			if err != nil {
-				// Don't log common closure errors to keep logs clean
-				if err != websocket.ErrCloseSent && !websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-					log.Printf("Websocket write error: %v", err)
-				}
-
-				// Clean up the client
-				client.Close()
-				ls.mu.Lock()
-				delete(ls.clients, client)
-				ls.mu.Unlock()
-			}
-		}
-	}
-}
-
-// it register client to the service
-func (ls *LeaderboardService) RegisterClient(conn *websocket.Conn) {
-	ls.mu.Lock()
-	ls.clients[conn] = true
-	ls.mu.Unlock()
-
-	// Send initial leaderboard
-	ls.BroadcastUpdate()
-}
-
-// it unregister client from the service
-func (ls *LeaderboardService) UnregisterClient(conn *websocket.Conn) {
-	ls.mu.Lock()
-	if _, ok := ls.clients[conn]; ok {
-		delete(ls.clients, conn)
-		conn.Close()
-	}
-	ls.mu.Unlock()
 }
 
 // it broadcast update to all clients broadcast means send update to all clients
@@ -88,11 +32,10 @@ func (ls *LeaderboardService) BroadcastUpdate() {
 		return
 	}
 
-	data, err := json.Marshal(topUsers)
-	if err != nil {
-		log.Printf("Error marshalling leaderboard: %v", err)
-		return
-	}
-
-	ls.broadcast <- data
+	// Don't marshal here, let the Hub marshal everything together
+	ls.hub.Broadcast(ws.Message{
+		Type:   "LEADERBOARD_UPDATE",
+		Data:   topUsers,
+		QuizID: "",
+	})
 }

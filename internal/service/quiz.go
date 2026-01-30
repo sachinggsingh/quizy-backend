@@ -15,16 +15,18 @@ import (
 )
 
 type QuizService struct {
-	quizRepo    repo.QuizRepo
-	userRepo    *repo.UserRepo
-	leaderboard *LeaderboardService
+	quizRepo            repo.QuizRepo
+	userRepo            *repo.UserRepo
+	leaderboard         *LeaderboardService
+	notificationService *NotificationService
 }
 
-func NewQuizService(quizRepo repo.QuizRepo, userRepo *repo.UserRepo, leaderboard *LeaderboardService) *QuizService {
+func NewQuizService(quizRepo repo.QuizRepo, userRepo *repo.UserRepo, leaderboard *LeaderboardService, notificationService *NotificationService) *QuizService {
 	return &QuizService{
-		quizRepo:    quizRepo,
-		userRepo:    userRepo,
-		leaderboard: leaderboard,
+		quizRepo:            quizRepo,
+		userRepo:            userRepo,
+		leaderboard:         leaderboard,
+		notificationService: notificationService,
 	}
 }
 
@@ -36,6 +38,9 @@ func (s *QuizService) CreateQuiz(ctx context.Context, title string, difficulty s
 		Points:     points,
 	}
 	err := s.quizRepo.Create(ctx, quiz)
+	if err == nil {
+		s.notificationService.PublishQuizCreated(*quiz)
+	}
 	return quiz, err
 }
 
