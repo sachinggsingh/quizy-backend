@@ -1,6 +1,6 @@
-# QuizMaster Backend
+# MindClash Backend
 
-The backend server for QuizMaster, a high-performance quiz application built with Go and MongoDB. It handles user authentication, quiz management, scoring, and real-time leaderboard updates via WebSockets.
+The backend server for MindClash, a high-performance quiz application built with Go and MongoDB. It handles user authentication, quiz management, scoring, and real-time leaderboard updates via WebSockets.
 
 ## 🚀 Features
 

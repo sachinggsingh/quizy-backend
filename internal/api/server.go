@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
@@ -13,6 +12,7 @@ import (
 	"github.com/sachinggsingh/quiz/internal/api/handler"
 	"github.com/sachinggsingh/quiz/internal/repo"
 	"github.com/sachinggsingh/quiz/internal/service"
+	"github.com/sachinggsingh/quiz/internal/utils"
 	"github.com/sachinggsingh/quiz/internal/ws"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -25,7 +25,7 @@ func HiFromBackendServer(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello from backend server"))
 }
 func NewServer(db *mongo.Database, env *config.Env) *Server {
-	frontendURL := os.Getenv("FRONTEND_URL_DEVELOPMENT")
+	frontendURL := env.FRONTEND_URL
 	// 0. Redis
 	redisClient, err := config.NewRedisClient()
 	if err != nil {
@@ -37,14 +37,17 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 	userRepo := repo.NewUserRepo(db)
 	quizRepo := repo.NewQuizRepo(db)
 	commentRepo := repo.NewCommentRepo(db)
+	subscriptionRepo := repo.NewSubscription(db)
 
 	// 2. Services
 	wsHub := ws.NewHub(10) // 10 workers for message processing
 	go wsHub.Run()
+	stripeClient := config.NewStripeClient()
 	leaderboardService := service.NewLeaderboardService(userRepo, wsHub)
 	userService := service.NewUserService(userRepo)
 	quizService := service.NewQuizService(quizRepo, userRepo, leaderboardService, notificationService)
 	commentService := service.NewCommentService(commentRepo)
+	subscriptionService := service.NewSubscriptionService(subscriptionRepo, stripeClient, userRepo)
 
 	// Wire up NotificationService to Hub
 	go func() {
@@ -76,6 +79,7 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 	userHandler := handler.NewRestHandler(userService)
 	quizHandler := handler.NewQuizHandler(quizService, userService)
 	commentHandler := handler.NewCommentHandler(commentService, userService)
+	subscriptionHandler := handler.NewSubscriptonHandler(subscriptionService, subscriptionRepo)
 	wsHandler := ws.NewHandler(wsHub, leaderboardService)
 
 	// 4. Router
@@ -95,13 +99,17 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 	// comment routes
 	r.HandleFunc("/comments", commentHandler.CreateComment).Methods("POST")
 	r.HandleFunc("/comments", commentHandler.GetComments).Methods("GET")
+	// subscription routes
+	r.HandleFunc("/create-checkout-session", utils.Authenticate(subscriptionHandler.Create)).Methods("POST")
+	r.HandleFunc("/webhook", subscriptionHandler.StripeWebhook).Methods("POST")
+	r.HandleFunc("/subscription", utils.Authenticate(subscriptionHandler.GetSubscription)).Methods("GET")
 
 	// WebSocket Route
 	r.HandleFunc("/ws/leaderboard", wsHandler.HandleLeaderboard)
 	r.HandleFunc("/ws/quiz/{quiz_id}", wsHandler.HandleLeaderboard) // Shared handler or specialized one
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{frontendURL, "http://localhost:3001"},
+		AllowedOrigins:   []string{frontendURL, "http://localhost:3000", "http://localhost:3001"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		AllowCredentials: true,

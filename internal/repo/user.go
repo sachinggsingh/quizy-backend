@@ -11,19 +11,30 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type UserRepo struct {
+type UserRepo interface {
+	InitIndexes(ctx context.Context) error
+	Create(ctx context.Context, user *model.User) error
+	UpdateRefreshToken(ctx context.Context, userID primitive.ObjectID, refreshToken string) error
+	FindByEmail(ctx context.Context, email string) (*model.User, error)
+	FindByID(ctx context.Context, id primitive.ObjectID) (*model.User, error)
+	UpdateStats(ctx context.Context, userID primitive.ObjectID, score int, completedQuizzes int, averageScore float64, streak int, activity map[string]int, completedQuizIDs []primitive.ObjectID) error
+	UpdateScore(ctx context.Context, userID primitive.ObjectID, score int) error
+	GetTopUsers(ctx context.Context, page int64, limit int64) ([]model.User, int64, error)
+}
+
+type userRepoImpl struct {
 	collection *mongo.Collection
 }
 
-func NewUserRepo(db *mongo.Database) *UserRepo {
-	repo := &UserRepo{
+func NewUserRepo(db *mongo.Database) UserRepo {
+	repo := &userRepoImpl{
 		collection: db.Collection("users"),
 	}
 	repo.InitIndexes(context.Background())
 	return repo
 }
 
-func (r *UserRepo) InitIndexes(ctx context.Context) error {
+func (r *userRepoImpl) InitIndexes(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -45,7 +56,7 @@ func (r *UserRepo) InitIndexes(ctx context.Context) error {
 	return err
 }
 
-func (r *UserRepo) Create(ctx context.Context, user *model.User) error {
+func (r *userRepoImpl) Create(ctx context.Context, user *model.User) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -59,7 +70,7 @@ func (r *UserRepo) Create(ctx context.Context, user *model.User) error {
 	_, err := r.collection.InsertOne(ctx, user)
 	return err
 }
-func (r *UserRepo) UpdateRefreshToken(ctx context.Context, userID primitive.ObjectID, refreshToken string) error {
+func (r *userRepoImpl) UpdateRefreshToken(ctx context.Context, userID primitive.ObjectID, refreshToken string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -75,7 +86,7 @@ func (r *UserRepo) UpdateRefreshToken(ctx context.Context, userID primitive.Obje
 }
 
 // returns the array of details of the user
-func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*model.User, error) {
+func (r *userRepoImpl) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -88,7 +99,7 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*model.User, 
 }
 
 // returning the user
-func (r *UserRepo) FindByID(ctx context.Context, id primitive.ObjectID) (*model.User, error) {
+func (r *userRepoImpl) FindByID(ctx context.Context, id primitive.ObjectID) (*model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -100,7 +111,7 @@ func (r *UserRepo) FindByID(ctx context.Context, id primitive.ObjectID) (*model.
 	return &user, nil
 }
 
-func (r *UserRepo) UpdateStats(ctx context.Context, userID primitive.ObjectID, score int, completedQuizzes int, averageScore float64, streak int, activity map[string]int, completedQuizIDs []primitive.ObjectID) error {
+func (r *userRepoImpl) UpdateStats(ctx context.Context, userID primitive.ObjectID, score int, completedQuizzes int, averageScore float64, streak int, activity map[string]int, completedQuizIDs []primitive.ObjectID) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -119,7 +130,7 @@ func (r *UserRepo) UpdateStats(ctx context.Context, userID primitive.ObjectID, s
 	return err
 }
 
-func (r *UserRepo) UpdateScore(ctx context.Context, userID primitive.ObjectID, score int) error {
+func (r *userRepoImpl) UpdateScore(ctx context.Context, userID primitive.ObjectID, score int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -135,7 +146,7 @@ func (r *UserRepo) UpdateScore(ctx context.Context, userID primitive.ObjectID, s
 }
 
 // GetTopUsers returns a page of users sorted by score descending and the total number of users paginated
-func (r *UserRepo) GetTopUsers(ctx context.Context, page int64, limit int64) ([]model.User, int64, error) {
+func (r *userRepoImpl) GetTopUsers(ctx context.Context, page int64, limit int64) ([]model.User, int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 

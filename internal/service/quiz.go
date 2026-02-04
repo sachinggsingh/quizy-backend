@@ -16,12 +16,12 @@ import (
 
 type QuizService struct {
 	quizRepo            repo.QuizRepo
-	userRepo            *repo.UserRepo
+	userRepo            repo.UserRepo
 	leaderboard         *LeaderboardService
 	notificationService *NotificationService
 }
 
-func NewQuizService(quizRepo repo.QuizRepo, userRepo *repo.UserRepo, leaderboard *LeaderboardService, notificationService *NotificationService) *QuizService {
+func NewQuizService(quizRepo repo.QuizRepo, userRepo repo.UserRepo, leaderboard *LeaderboardService, notificationService *NotificationService) *QuizService {
 	return &QuizService{
 		quizRepo:            quizRepo,
 		userRepo:            userRepo,

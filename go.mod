@@ -10,6 +10,8 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/rs/cors v1.11.1
+	github.com/stripe/stripe-go/v74 v74.30.0
+	github.com/stripe/stripe-go/v84 v84.3.0
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/crypto v0.46.0
 )

@@ -1,7 +1,10 @@
 package utils
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -42,4 +45,47 @@ func TokenValidator(token string) (*jwt.Token, error) {
 		}
 		return []byte(config.LoadEnv().JWT_KEY), nil
 	})
+}
+
+func Authenticate(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tokenString := r.Header.Get("Authorization")
+		if tokenString == "" {
+			WriteError(w, http.StatusUnauthorized, "authorization token not provided")
+			return
+		}
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		tokenString = strings.TrimSpace(tokenString)
+
+		token, err := TokenValidator(tokenString)
+		if err != nil || !token.Valid {
+			WriteError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+
+		if !token.Valid {
+			WriteError(w, http.StatusUnauthorized, "token expired")
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			WriteError(w, http.StatusUnauthorized, "invalid token claims")
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), "user_id", claims["user_id"]))
+		r = r.WithContext(context.WithValue(r.Context(), "email", claims["email"]))
+		next(w, r)
+	}
+}
+
+func GetUserId(ctx context.Context) string {
+	if val := ctx.Value("user_id"); val != nil {
+		return val.(string)
+	}
+	return ""
+}
+
+func GetEmail(r *http.Request) string {
+	return r.Context().Value("email").(string)
 }

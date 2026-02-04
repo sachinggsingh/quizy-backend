@@ -10,11 +10,11 @@ import (
 )
 
 type LeaderboardService struct {
-	userRepo *repo.UserRepo
+	userRepo repo.UserRepo
 	hub      *ws.Hub
 }
 
-func NewLeaderboardService(userRepo *repo.UserRepo, hub *ws.Hub) *LeaderboardService {
+func NewLeaderboardService(userRepo repo.UserRepo, hub *ws.Hub) *LeaderboardService {
 	return &LeaderboardService{
 		userRepo: userRepo,
 		hub:      hub,
