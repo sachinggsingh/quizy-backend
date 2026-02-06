@@ -3,11 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/sachinggsingh/quiz/config"
 	"github.com/sachinggsingh/quiz/internal/service"
+	"github.com/sachinggsingh/quiz/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -38,8 +36,30 @@ func (h *RestHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-login after registration: generate tokens and set cookies
+	accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
+	if err != nil {
+		// If auto-login fails, still return success for registration
+		// but without setting cookies (user will need to sign in manually)
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"user": user,
+			"message": "User created successfully. Please sign in.",
+		})
+		return
+	}
+
+	// Set cookies (access token: 15 minutes, refresh token: 7 days)
+	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 15*60)        // 15 minutes
+	utils.SetCookie(w, utils.RefreshTokenCookieName, refreshToken, 7*24*60*60) // 7 days
+
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user": user,
+		"message": "Account created and logged in successfully",
+		"access_token":  accessToken, // For backward compatibility
+		"refresh_token": refreshToken, // For backward compatibility
+	})
 }
 
 func (h *RestHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -58,43 +78,33 @@ func (h *RestHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set cookies (access token: 15 minutes, refresh token: 7 days)
+	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 15*60)        // 15 minutes
+	utils.SetCookie(w, utils.RefreshTokenCookieName, refreshToken, 7*24*60*60) // 7 days
+
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Login successful",
+		// Optionally still return tokens in response for backward compatibility
+		// Remove these lines if you want cookies-only authentication
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 	})
 }
 
 func (h *RestHandler) GetMe(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, "missing auth header", http.StatusUnauthorized)
+	// User ID is already set in context by Authenticate middleware
+	userIDHex := utils.GetUserId(r.Context())
+	if userIDHex == "" {
+		http.Error(w, "user not authenticated", http.StatusUnauthorized)
 		return
 	}
 
-	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-	if tokenStr == "" {
-		http.Error(w, "invalid auth header", http.StatusUnauthorized)
+	userID, err := primitive.ObjectIDFromHex(userIDHex)
+	if err != nil {
+		http.Error(w, "invalid user ID", http.StatusBadRequest)
 		return
 	}
-
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
-		return []byte(config.LoadEnv().JWT_KEY), nil
-	})
-
-	if err != nil || !token.Valid {
-		http.Error(w, "invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		http.Error(w, "invalid claims", http.StatusUnauthorized)
-		return
-	}
-
-	userIDHex := claims["user_id"].(string)
-	userID, _ := primitive.ObjectIDFromHex(userIDHex)
 
 	user, err := h.userService.GetProfile(r.Context(), userID)
 	if err != nil {
@@ -107,22 +117,43 @@ func (h *RestHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RestHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	// Try to get refresh token from cookie first
+	refreshToken, err := utils.GetCookie(r, utils.RefreshTokenCookieName)
+	if err != nil {
+		// Fallback to request body for backward compatibility
+		var req struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "refresh token not provided", http.StatusBadRequest)
+			return
+		}
+		refreshToken = req.RefreshToken
 	}
 
-	accessToken, err := h.userService.RefreshToken(r.Context(), req.RefreshToken)
+	accessToken, err := h.userService.RefreshToken(r.Context(), refreshToken)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
+	// Set new access token cookie
+	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 15*60) // 15 minutes
+
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
-		"access_token": accessToken,
+		"message":      "Token refreshed successfully",
+		"access_token": accessToken, // Optionally return for backward compatibility
+	})
+}
+
+func (h *RestHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Clear both cookies
+	utils.ClearCookie(w, utils.AccessTokenCookieName)
+	utils.ClearCookie(w, utils.RefreshTokenCookieName)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Logged out successfully",
 	})
 }

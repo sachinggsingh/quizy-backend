@@ -11,6 +11,11 @@ import (
 	"github.com/sachinggsingh/quiz/config"
 )
 
+const (
+	AccessTokenCookieName  = "access_token"
+	RefreshTokenCookieName = "refresh_token"
+)
+
 // GenerateToken creates a new JWT token for a given user ID and duration
 func GenerateToken(userId string, email string) (string, string, error) {
 	tokenClaims := jwt.MapClaims{
@@ -47,15 +52,76 @@ func TokenValidator(token string) (*jwt.Token, error) {
 	})
 }
 
+// SetCookie sets a secure HTTP-only cookie
+func SetCookie(w http.ResponseWriter, name, value string, maxAge int) {
+	env := config.LoadEnv()
+	// Set Secure to false for localhost/development, true for production
+	isSecure := len(env.FRONTEND_URL) >= 5 && env.FRONTEND_URL[:5] == "https"
+	
+	cookie := &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
+}
+
+// GetCookie retrieves a cookie value from the request
+func GetCookie(r *http.Request, name string) (string, error) {
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		return "", err
+	}
+	return cookie.Value, nil
+}
+
+// ClearCookie removes a cookie by setting it to expire
+func ClearCookie(w http.ResponseWriter, name string) {
+	env := config.LoadEnv()
+	// Set Secure to false for localhost/development, true for production
+	isSecure := len(env.FRONTEND_URL) >= 5 && env.FRONTEND_URL[:5] == "https"
+	
+	cookie := &http.Cookie{
+		Name:     name,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
+}
+
+// GetTokenFromRequest extracts token from cookie or Authorization header (cookie takes precedence)
+func GetTokenFromRequest(r *http.Request) string {
+	// Try to get token from cookie first
+	if cookieToken, err := GetCookie(r, AccessTokenCookieName); err == nil && cookieToken != "" {
+		return cookieToken
+	}
+
+	// Fallback to Authorization header for backward compatibility
+	tokenString := r.Header.Get("Authorization")
+	if tokenString != "" {
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		tokenString = strings.TrimSpace(tokenString)
+		return tokenString
+	}
+
+	return ""
+}
+
 func Authenticate(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tokenString := r.Header.Get("Authorization")
+		tokenString := GetTokenFromRequest(r)
 		if tokenString == "" {
 			WriteError(w, http.StatusUnauthorized, "authorization token not provided")
 			return
 		}
-		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-		tokenString = strings.TrimSpace(tokenString)
 
 		token, err := TokenValidator(tokenString)
 		if err != nil || !token.Valid {

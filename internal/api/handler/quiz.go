@@ -6,9 +6,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
-	"github.com/sachinggsingh/quiz/config"
 	"github.com/sachinggsingh/quiz/internal/model"
 	"github.com/sachinggsingh/quiz/internal/service"
+	"github.com/sachinggsingh/quiz/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -41,14 +41,11 @@ func (h *QuizHandler) CreateQuiz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *QuizHandler) GetQuizzes(w http.ResponseWriter, r *http.Request) {
-	// Try to get userID if authenticated
+	// Try to get userID if authenticated (optional auth)
 	var userID primitive.ObjectID
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenStr := authHeader[7:]
-		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-			return []byte(config.LoadEnv().JWT_KEY), nil
-		})
+	tokenString := utils.GetTokenFromRequest(r)
+	if tokenString != "" {
+		token, err := utils.TokenValidator(tokenString)
 		if err == nil && token.Valid {
 			if claims, ok := token.Claims.(jwt.MapClaims); ok {
 				if userIDHex, ok := claims["user_id"].(string); ok {
@@ -87,38 +84,18 @@ func (h *QuizHandler) GetQuiz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *QuizHandler) SubmitQuizResult(w http.ResponseWriter, r *http.Request) {
-	// Extract userID from JWT
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, "missing auth header", http.StatusUnauthorized)
+	// User ID is already set in context by Authenticate middleware
+	userIDHex := utils.GetUserId(r.Context())
+	if userIDHex == "" {
+		http.Error(w, "user not authenticated", http.StatusUnauthorized)
 		return
 	}
 
-	tokenStr := ""
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenStr = authHeader[7:]
-	} else {
-		http.Error(w, "invalid auth header", http.StatusUnauthorized)
+	userID, err := primitive.ObjectIDFromHex(userIDHex)
+	if err != nil {
+		http.Error(w, "invalid user ID", http.StatusBadRequest)
 		return
 	}
-
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-		return []byte(config.LoadEnv().JWT_KEY), nil
-	})
-
-	if err != nil || !token.Valid {
-		http.Error(w, "invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		http.Error(w, "invalid claims", http.StatusUnauthorized)
-		return
-	}
-
-	userIDHex := claims["user_id"].(string)
-	userID, _ := primitive.ObjectIDFromHex(userIDHex)
 
 	var req struct {
 		QuizID string `json:"quiz_id"`
@@ -153,38 +130,18 @@ func (h *QuizHandler) SubmitQuiz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract userID from JWT
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, "missing auth header", http.StatusUnauthorized)
+	// User ID is already set in context by Authenticate middleware
+	userIDHex := utils.GetUserId(r.Context())
+	if userIDHex == "" {
+		http.Error(w, "user not authenticated", http.StatusUnauthorized)
 		return
 	}
 
-	tokenStr := ""
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenStr = authHeader[7:]
-	} else {
-		http.Error(w, "invalid auth header", http.StatusUnauthorized)
+	userID, err := primitive.ObjectIDFromHex(userIDHex)
+	if err != nil {
+		http.Error(w, "invalid user ID", http.StatusBadRequest)
 		return
 	}
-
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-		return []byte(config.LoadEnv().JWT_KEY), nil
-	})
-
-	if err != nil || !token.Valid {
-		http.Error(w, "invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		http.Error(w, "invalid claims", http.StatusUnauthorized)
-		return
-	}
-
-	userIDHex := claims["user_id"].(string)
-	userID, _ := primitive.ObjectIDFromHex(userIDHex)
 
 	var req struct {
 		Answers map[string]string `json:"answers"`

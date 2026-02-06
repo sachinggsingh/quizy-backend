@@ -3,12 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/sachinggsingh/quiz/config"
 	"github.com/sachinggsingh/quiz/internal/model"
 	"github.com/sachinggsingh/quiz/internal/service"
+	"github.com/sachinggsingh/quiz/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -25,36 +23,18 @@ func NewCommentHandler(commentService *service.CommentService, userService *serv
 }
 
 func (h *CommentHandler) CreateComment(w http.ResponseWriter, r *http.Request) {
-	// Extract user info from JWT
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, "missing auth header", http.StatusUnauthorized)
+	// User ID is already set in context by Authenticate middleware
+	userIDHex := utils.GetUserId(r.Context())
+	if userIDHex == "" {
+		http.Error(w, "user not authenticated", http.StatusUnauthorized)
 		return
 	}
 
-	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-	if tokenStr == "" {
-		http.Error(w, "invalid auth header", http.StatusUnauthorized)
+	userID, err := primitive.ObjectIDFromHex(userIDHex)
+	if err != nil {
+		http.Error(w, "invalid user ID", http.StatusBadRequest)
 		return
 	}
-
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-		return []byte(config.LoadEnv().JWT_KEY), nil
-	})
-
-	if err != nil || !token.Valid {
-		http.Error(w, "invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		http.Error(w, "invalid claims", http.StatusUnauthorized)
-		return
-	}
-
-	userIDHex := claims["user_id"].(string)
-	userID, _ := primitive.ObjectIDFromHex(userIDHex)
 
 	// Fetch user to get name
 	user, err := h.userService.GetProfile(r.Context(), userID)

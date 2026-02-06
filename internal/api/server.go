@@ -89,15 +89,16 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 	r.HandleFunc("/", HiFromBackendServer)
 	r.HandleFunc("/users", userHandler.CreateUser).Methods("POST")
 	r.HandleFunc("/login", userHandler.Login).Methods("POST")
+	r.HandleFunc("/logout", userHandler.Logout).Methods("POST")
 	r.HandleFunc("/refresh-token", userHandler.RefreshToken).Methods("POST")
-	r.HandleFunc("/me", userHandler.GetMe).Methods("GET")
+	r.HandleFunc("/me", utils.Authenticate(userHandler.GetMe)).Methods("GET")
 	// quiz routes
 	r.HandleFunc("/quizzes", quizHandler.CreateQuiz).Methods("POST")
 	r.HandleFunc("/quizzes", quizHandler.GetQuizzes).Methods("GET")
 	r.HandleFunc("/quizzes/{id}", quizHandler.GetQuiz).Methods("GET")
-	r.HandleFunc("/quizzes/{id}/submit", quizHandler.SubmitQuiz).Methods("POST")
+	r.HandleFunc("/quizzes/{id}/submit", utils.Authenticate(quizHandler.SubmitQuiz)).Methods("POST")
 	// comment routes
-	r.HandleFunc("/comments", commentHandler.CreateComment).Methods("POST")
+	r.HandleFunc("/comments", utils.Authenticate(commentHandler.CreateComment)).Methods("POST")
 	r.HandleFunc("/comments", commentHandler.GetComments).Methods("GET")
 	// subscription routes
 	r.HandleFunc("/create-checkout-session", utils.Authenticate(subscriptionHandler.Create)).Methods("POST")
@@ -111,7 +112,8 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{frontendURL, "http://localhost:3000", "http://localhost:3001"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type", "Cookie"},
+		ExposedHeaders:   []string{"Set-Cookie"},
 		AllowCredentials: true,
 	})
 
