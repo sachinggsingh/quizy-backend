@@ -30,9 +30,10 @@ func NewQuizService(quizRepo repo.QuizRepo, userRepo repo.UserRepo, leaderboard 
 	}
 }
 
-func (s *QuizService) CreateQuiz(ctx context.Context, title string, difficulty string, questions []model.Question, points int) (*model.Quiz, error) {
+func (s *QuizService) CreateQuiz(ctx context.Context, title string, category string, difficulty string, questions []model.Question, points int) (*model.Quiz, error) {
 	quiz := &model.Quiz{
 		Title:      title,
+		Category:   category,
 		Difficulty: difficulty,
 		Questions:  questions,
 		Points:     points,
@@ -42,6 +43,24 @@ func (s *QuizService) CreateQuiz(ctx context.Context, title string, difficulty s
 		s.notificationService.PublishQuizCreated(*quiz)
 	}
 	return quiz, err
+}
+
+func (s *QuizService) GetQuizzesGroupedByCategory(ctx context.Context, userID primitive.ObjectID) (map[string][]model.Quiz, error) {
+	quizzes, err := s.GetQuizzes(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	grouped := make(map[string][]model.Quiz)
+	for _, q := range quizzes {
+		category := q.Category
+		if category == "" {
+			category = "Others"
+		}
+		grouped[category] = append(grouped[category], q)
+	}
+
+	return grouped, nil
 }
 
 func (s *QuizService) GetQuizzes(ctx context.Context, userID primitive.ObjectID) ([]model.Quiz, error) {

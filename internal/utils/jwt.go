@@ -21,7 +21,7 @@ func GenerateToken(userId string, email string) (string, string, error) {
 	tokenClaims := jwt.MapClaims{
 		"user_id": userId,
 		"email":   email,
-		"exp":     jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+		"exp":     jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // 7 days, long-lived
 	}
 	refreshTokenClaims := jwt.MapClaims{
 		"user_id": userId,

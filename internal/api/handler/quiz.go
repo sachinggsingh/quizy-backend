@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -31,13 +32,37 @@ func (h *QuizHandler) CreateQuiz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.quizService.CreateQuiz(r.Context(), quiz.Title, quiz.Difficulty, quiz.Questions, quiz.Points)
+	created, err := h.quizService.CreateQuiz(r.Context(), quiz.Title, quiz.Category, quiz.Difficulty, quiz.Questions, quiz.Points)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(created)
+}
+
+func (h *QuizHandler) GetQuizzesGroupedByCategory(w http.ResponseWriter, r *http.Request) {
+	// Try to get userID if authenticated
+	var userID primitive.ObjectID
+	tokenString := utils.GetTokenFromRequest(r)
+	if tokenString != "" {
+		token, err := utils.TokenValidator(tokenString)
+		if err == nil && token.Valid {
+			if claims, ok := token.Claims.(jwt.MapClaims); ok {
+				if userIDHex, ok := claims["user_id"].(string); ok {
+					userID, _ = primitive.ObjectIDFromHex(userIDHex)
+				}
+			}
+		}
+	}
+
+	grouped, err := h.quizService.GetQuizzesGroupedByCategory(r.Context(), userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(grouped)
 }
 
 func (h *QuizHandler) GetQuizzes(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +104,15 @@ func (h *QuizHandler) GetQuiz(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	
+	// Debug: Log quiz data before sending
+	fmt.Printf("Quiz fetched - ID: %s, Title: %s, Questions count: %d\n", quiz.ID.Hex(), quiz.Title, len(quiz.Questions))
+	if len(quiz.Questions) > 0 {
+		fmt.Printf("First question - ID: %s, Text: %s, Options count: %d\n", 
+			quiz.Questions[0].ID.Hex(), quiz.Questions[0].Text, len(quiz.Questions[0].Options))
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(quiz)
 }

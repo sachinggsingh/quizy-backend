@@ -93,6 +93,7 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 	r.HandleFunc("/refresh-token", userHandler.RefreshToken).Methods("POST")
 	r.HandleFunc("/me", utils.Authenticate(userHandler.GetMe)).Methods("GET")
 	// quiz routes
+	r.HandleFunc("/quizzes/categories", quizHandler.GetQuizzesGroupedByCategory).Methods("GET")
 	r.HandleFunc("/quizzes", quizHandler.CreateQuiz).Methods("POST")
 	r.HandleFunc("/quizzes", quizHandler.GetQuizzes).Methods("GET")
 	r.HandleFunc("/quizzes/{id}", quizHandler.GetQuiz).Methods("GET")

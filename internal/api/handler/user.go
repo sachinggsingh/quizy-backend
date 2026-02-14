@@ -49,8 +49,8 @@ func (h *RestHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set cookies (access token: 15 minutes, refresh token: 7 days)
-	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 15*60)        // 15 minutes
+	// Set cookies (both long-lived: 7 days)
+	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 7*24*60*60)  // 7 days
 	utils.SetCookie(w, utils.RefreshTokenCookieName, refreshToken, 7*24*60*60) // 7 days
 
 	w.WriteHeader(http.StatusCreated)
@@ -78,8 +78,8 @@ func (h *RestHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set cookies (access token: 15 minutes, refresh token: 7 days)
-	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 15*60)        // 15 minutes
+	// Set cookies (both long-lived: 7 days)
+	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 7*24*60*60)  // 7 days
 	utils.SetCookie(w, utils.RefreshTokenCookieName, refreshToken, 7*24*60*60) // 7 days
 
 	w.WriteHeader(http.StatusOK)
@@ -137,8 +137,8 @@ func (h *RestHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set new access token cookie
-	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 15*60) // 15 minutes
+	// Set new access token cookie (long-lived)
+	utils.SetCookie(w, utils.AccessTokenCookieName, accessToken, 7*24*60*60) // 7 days
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
