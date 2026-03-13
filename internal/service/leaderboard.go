@@ -7,7 +7,6 @@ import (
 
 	"github.com/sachinggsingh/quiz/internal/model"
 	"github.com/sachinggsingh/quiz/internal/repo"
-	"github.com/sachinggsingh/quiz/internal/ws"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -36,15 +35,21 @@ func userToEntry(u *model.User) LeaderboardEntry {
 	}
 }
 
-type LeaderboardService struct {
-	userRepo repo.UserRepo
-	hub      *ws.Hub
+// LeaderboardBroadcaster defines how leaderboard updates are pushed to clients.
+// This decouples the service layer from any specific transport (WebSocket, SSE, etc.).
+type LeaderboardBroadcaster interface {
+	BroadcastLeaderboardUpdate(entries []LeaderboardEntry)
 }
 
-func NewLeaderboardService(userRepo repo.UserRepo, hub *ws.Hub) *LeaderboardService {
+type LeaderboardService struct {
+	userRepo    repo.UserRepo
+	broadcaster LeaderboardBroadcaster
+}
+
+func NewLeaderboardService(userRepo repo.UserRepo, broadcaster LeaderboardBroadcaster) *LeaderboardService {
 	return &LeaderboardService{
-		userRepo: userRepo,
-		hub:      hub,
+		userRepo:    userRepo,
+		broadcaster: broadcaster,
 	}
 }
 
@@ -63,9 +68,5 @@ func (ls *LeaderboardService) BroadcastUpdate() {
 		entries = append(entries, userToEntry(&topUsers[i]))
 	}
 
-	ls.hub.Broadcast(ws.Message{
-		Type:   "LEADERBOARD_UPDATE",
-		Data:   entries,
-		QuizID: "",
-	})
+	ls.broadcaster.BroadcastLeaderboardUpdate(entries)
 }

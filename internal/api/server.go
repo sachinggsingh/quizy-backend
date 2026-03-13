@@ -21,6 +21,20 @@ type Server struct {
 	httpServer *http.Server
 }
 
+// wsLeaderboardBroadcaster adapts the WebSocket hub to the LeaderboardBroadcaster
+// interface defined in the service layer.
+type wsLeaderboardBroadcaster struct {
+	hub *ws.Hub
+}
+
+func (b *wsLeaderboardBroadcaster) BroadcastLeaderboardUpdate(entries []service.LeaderboardEntry) {
+	b.hub.Broadcast(ws.Message{
+		Type:   "LEADERBOARD_UPDATE",
+		Data:   entries,
+		QuizID: "",
+	})
+}
+
 func HiFromBackendServer(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello from backend server"))
 }
@@ -43,7 +57,7 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 	wsHub := ws.NewHub(10) // 10 workers for message processing
 	go wsHub.Run()
 	stripeClient := config.NewStripeClient()
-	leaderboardService := service.NewLeaderboardService(userRepo, wsHub)
+	leaderboardService := service.NewLeaderboardService(userRepo, &wsLeaderboardBroadcaster{hub: wsHub})
 	userService := service.NewUserService(userRepo)
 	quizService := service.NewQuizService(quizRepo, userRepo, leaderboardService, notificationService)
 	commentService := service.NewCommentService(commentRepo)
@@ -80,7 +94,7 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 	quizHandler := handler.NewQuizHandler(quizService, userService)
 	commentHandler := handler.NewCommentHandler(commentService, userService)
 	subscriptionHandler := handler.NewSubscriptonHandler(subscriptionService, subscriptionRepo)
-	wsHandler := ws.NewHandler(wsHub, leaderboardService)
+	wsHandler := ws.NewHandler(wsHub, leaderboardService, subscriptionService)
 
 	// 4. Router
 	r := mux.NewRouter()
@@ -108,7 +122,8 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 
 	// WebSocket Route
 	r.HandleFunc("/ws/leaderboard", wsHandler.HandleLeaderboard)
-	r.HandleFunc("/ws/quiz/{quiz_id}", wsHandler.HandleLeaderboard) // Shared handler or specialized one
+	r.HandleFunc("/ws/quiz/{quiz_id}", wsHandler.HandleLeaderboard)                                   // Shared handler or specialized one
+	r.HandleFunc("/ws/room/{room_id}", utils.Authenticate(wsHandler.CreateRoom)).Methods("POST") // Protected: only authenticated users with active subscription can create rooms
 
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{frontendURL, "http://localhost:3000", "http://localhost:3001"},

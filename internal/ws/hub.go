@@ -12,6 +12,25 @@ type Message struct {
 	QuizID string `json:"quiz_id,omitempty"`
 }
 
+type Room struct {
+	ID         string
+	clients    map[*Client]bool
+	mu         sync.RWMutex
+	broadcast  chan Message
+	register   chan *Client
+	unregister chan *Client
+}
+
+func NewRoom(id string) *Room {
+	return &Room{
+		ID:         id,
+		clients:    make(map[*Client]bool),
+		broadcast:  make(chan Message, 1024),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+	}
+}
+
 type Hub struct {
 	// Registered clients.
 	clients map[*Client]bool
@@ -27,22 +46,99 @@ type Hub struct {
 
 	mu sync.RWMutex
 
+	//rooms
+	rooms map[string]*Room
+
 	// Worker pool settings
 	workerCount int
 	jobQueue    chan Message
 }
 
+// for the rooms
+// NewHub initializes a Hub with all required channels and maps.
 func NewHub(workerCount int) *Hub {
 	return &Hub{
-		broadcast:   make(chan Message, 1024),
+		clients:     make(map[*Client]bool),
+		broadcast:   make(chan Message),
 		register:    make(chan *Client),
 		unregister:  make(chan *Client),
-		clients:     make(map[*Client]bool),
-		jobQueue:    make(chan Message, 2048),
+		rooms:       make(map[string]*Room),
 		workerCount: workerCount,
+		// Buffered jobQueue so broadcasting doesn't block writers unnecessarily
+		jobQueue: make(chan Message, workerCount*10),
 	}
 }
 
+// create the Room by id
+func (h *Hub) CreateRoom(id string) *Room {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	room := NewRoom(id)
+	h.rooms[id] = room
+	return room
+}
+
+// search the room by id its a lock free operation
+func (h *Hub) GetRoom(id string) *Room {
+	return h.rooms[id]
+}
+
+// remove the room by id its a lock free operation
+func (h *Hub) RemoveRoom(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.rooms, id)
+}
+
+// get all the rooms its a lock free operation
+func (h *Hub) GetAllRooms() []*Room {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	rooms := make([]*Room, 0, len(h.rooms))
+	for _, room := range h.rooms {
+		rooms = append(rooms, room)
+	}
+	return rooms
+}
+
+// register the client to the room its a lock free operation
+func (h *Hub) RegisterClientToRoom(client *Client, roomId string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	room := h.GetRoom(roomId)
+	if room == nil {
+		room = h.CreateRoom(roomId)
+	}
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	room.clients[client] = true
+}
+
+// unregister the client from the room its a lock free operation
+func (h *Hub) UnregisterClientFromRoom(client *Client, roomId string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	room := h.GetRoom(roomId)
+	if room == nil {
+		return
+	}
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	delete(room.clients, client)
+}
+
+// broadcast the message to the room its a lock free operation
+func (h *Hub) BroadcastToRoom(roomId string, message Message) {
+	room := h.GetRoom(roomId)
+	if room == nil {
+		return
+	}
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	room.broadcast <- message
+}
+
+// run the hub its a lock free operation
 func (h *Hub) Run() {
 	// Start workers
 	for i := 0; i < h.workerCount; i++ {
