@@ -14,7 +14,7 @@ FROM alpine:latest
 
 WORKDIR /app
 
-COPY --from=builder /app/main /app/main
+COPY --from=builder /app/mindclash /app/main
 
 EXPOSE 8080
 
