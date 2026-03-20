@@ -122,11 +122,13 @@ func NewServer(db *mongo.Database, env *config.Env) *Server {
 
 	// WebSocket Route
 	r.HandleFunc("/ws/leaderboard", wsHandler.HandleLeaderboard)
-	r.HandleFunc("/ws/quiz/{quiz_id}", wsHandler.HandleLeaderboard)                                   // Shared handler or specialized one
-	r.HandleFunc("/ws/room/{room_id}", utils.Authenticate(wsHandler.CreateRoom)).Methods("POST") // Protected: only authenticated users with active subscription can create rooms
+	r.HandleFunc("/ws/quiz/{quiz_id}", wsHandler.HandleLeaderboard)                           // Shared handler or specialized one
+	r.HandleFunc("/ws/room", utils.Authenticate(wsHandler.CreateRoom)).Methods("POST")        // Protected: only authenticated users with active subscription can create rooms
+	r.HandleFunc("/ws/room/{room_id}", utils.Authenticate(wsHandler.JoinRoom)).Methods("GET") // Join room via WebSocket
+	r.HandleFunc("/api/room/{room_id}/validate", utils.Authenticate(wsHandler.ValidateRoom)).Methods("GET")
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{frontendURL, "http://localhost:3000", "http://localhost:3001"},
+		AllowedOrigins:   []string{frontendURL, "http://localhost:3000", "http://localhost:3001"}, // use the env var for frontend url in prod
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type", "Cookie"},
 		ExposedHeaders:   []string{"Set-Cookie"},

@@ -2,6 +2,7 @@ package ws
 
 import (
 	"bytes"
+	"encoding/json"
 	"log"
 	"time"
 
@@ -19,7 +20,7 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 512
+	maxMessageSize = 16384 // 16KB
 )
 
 var (
@@ -32,6 +33,7 @@ type Client struct {
 	Conn   *websocket.Conn
 	Send   chan []byte
 	QuizID string
+	RoomID string
 	UserID string
 }
 
@@ -58,11 +60,19 @@ func (c *Client) ReadPump() {
 		}
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 
-		// Wrap in Message for hub
-		c.Hub.broadcast <- Message{
-			Type:   "CLIENT_MESSAGE",
-			Data:   message,
-			QuizID: c.QuizID,
+		// Try to parse as Message struct
+		var msg Message
+		if err := json.Unmarshal(message, &msg); err == nil && msg.Type != "" {
+			// It's a structured message
+			msg.RoomID = c.RoomID
+			c.Hub.broadcast <- msg
+		} else {
+			// Fallback to simple CLIENT_MESSAGE
+			c.Hub.broadcast <- Message{
+				Type:   "CLIENT_MESSAGE",
+				Data:   string(message),
+				RoomID: c.RoomID,
+			}
 		}
 	}
 }

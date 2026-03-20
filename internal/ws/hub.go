@@ -10,10 +10,12 @@ type Message struct {
 	Type   string `json:"type"`
 	Data   any    `json:"data"`
 	QuizID string `json:"quiz_id,omitempty"`
+	RoomID string `json:"room_id,omitempty"`
 }
 
 type Room struct {
 	ID         string
+	HostID     string
 	clients    map[*Client]bool
 	mu         sync.RWMutex
 	broadcast  chan Message
@@ -21,9 +23,10 @@ type Room struct {
 	unregister chan *Client
 }
 
-func NewRoom(id string) *Room {
+func NewRoom(id string, hostId string) *Room {
 	return &Room{
 		ID:         id,
+		HostID:     hostId,
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan Message, 1024),
 		register:   make(chan *Client),
@@ -69,17 +72,17 @@ func NewHub(workerCount int) *Hub {
 	}
 }
 
-// create the Room by id
-func (h *Hub) CreateRoom(id string) *Room {
+// create the Room by id its a thread-safe operation
+func (h *Hub) CreateRoom(id string, hostId string) *Room {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	room := NewRoom(id)
-	h.rooms[id] = room
-	return room
+	return h.createRoom(id, hostId)
 }
 
-// search the room by id its a lock free operation
+// search the room by id its a thread-safe operation
 func (h *Hub) GetRoom(id string) *Room {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.rooms[id]
 }
 
@@ -90,10 +93,11 @@ func (h *Hub) RemoveRoom(id string) {
 	delete(h.rooms, id)
 }
 
-// get all the rooms its a lock free operation
+// get all the rooms its a thread-safe operation.
+// but will not be used anywhere
 func (h *Hub) GetAllRooms() []*Room {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	rooms := make([]*Room, 0, len(h.rooms))
 	for _, room := range h.rooms {
 		rooms = append(rooms, room)
@@ -101,24 +105,36 @@ func (h *Hub) GetAllRooms() []*Room {
 	return rooms
 }
 
-// register the client to the room its a lock free operation
+// getRoom internal method (non-locking)
+func (h *Hub) getRoom(id string) *Room {
+	return h.rooms[id]
+}
+
+// createRoom internal method (non-locking)
+func (h *Hub) createRoom(id string, hostId string) *Room {
+	room := NewRoom(id, hostId)
+	h.rooms[id] = room
+	return room
+}
+
+// register the client to the room its a thread-safe operation
 func (h *Hub) RegisterClientToRoom(client *Client, roomId string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	room := h.GetRoom(roomId)
+	room := h.getRoom(roomId)
 	if room == nil {
-		room = h.CreateRoom(roomId)
+		return
 	}
 	room.mu.Lock()
 	defer room.mu.Unlock()
 	room.clients[client] = true
 }
 
-// unregister the client from the room its a lock free operation
+// unregister the client from the room its a thread-safe operation
 func (h *Hub) UnregisterClientFromRoom(client *Client, roomId string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	room := h.GetRoom(roomId)
+	room := h.getRoom(roomId)
 	if room == nil {
 		return
 	}
@@ -184,8 +200,8 @@ func (h *Hub) broadcastToClients(message Message) {
 	defer h.mu.RUnlock()
 
 	for client := range h.clients {
-		// If QuizID is provided, only broadcast to clients in that quiz
-		if message.QuizID != "" && client.QuizID != message.QuizID {
+		// If RoomID is provided, only broadcast to clients in that room
+		if message.RoomID != "" && client.RoomID != message.RoomID {
 			continue
 		}
 

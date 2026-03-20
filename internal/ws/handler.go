@@ -2,11 +2,13 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
 	"github.com/sachinggsingh/quiz/internal/model"
+	"github.com/sachinggsingh/quiz/internal/utils"
 )
 
 type LeaderboardService interface {
@@ -86,21 +88,89 @@ func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get room ID from path
+	// Generate a unique room ID
+	roomID, err := utils.GenerateRoomId()
+	if err != nil {
+		http.Error(w, "failed to generate room id", http.StatusInternalServerError)
+		return
+	}
+
+	// Create the room
+	// Create the room with the current user as host
+	h.hub.CreateRoom(roomID, userID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"room_id": roomID})
+}
+
+func (h *Handler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	roomID := vars["room_id"]
+	log.Printf("JoinRoom attempt for room: %s", roomID)
+
 	if roomID == "" {
 		http.Error(w, "room_id is required", http.StatusBadRequest)
 		return
 	}
 
-	// If room already exists, just return OK (idempotent)
-	if existing := h.hub.GetRoom(roomID); existing != nil {
-		w.WriteHeader(http.StatusOK)
+	// Check if room exists
+	if h.hub.GetRoom(roomID) == nil {
+		log.Printf("Room not found: %s", roomID)
+		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
 
-	// Create the room
-	h.hub.CreateRoom(roomID)
-	w.WriteHeader(http.StatusCreated)
+	userID, _ := r.Context().Value("user_id").(string)
+	log.Printf("Upgrading connection for room: %s, user: %s", roomID, userID)
+
+	conn, err := Upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Upgrade error for room %s: %v", roomID, err)
+		return
+	}
+	log.Printf("Successfully upgraded connection for room: %s", roomID)
+
+	client := &Client{
+		Hub:    h.hub,
+		Conn:   conn,
+		Send:   make(chan []byte, 256),
+		RoomID: roomID,
+		UserID: userID,
+	}
+
+	h.hub.register <- client
+	h.hub.RegisterClientToRoom(client, roomID)
+
+	// Send initial room info to the client
+	room := h.hub.GetRoom(roomID)
+	if room != nil {
+		roomInfo := map[string]string{
+			"room_id": roomID,
+			"host_id": room.HostID,
+		}
+		roomJoinedMsg := Message{
+			Type:   "ROOM_JOINED",
+			Data:   roomInfo,
+			RoomID: roomID,
+		}
+		data, _ := json.Marshal(roomJoinedMsg)
+		client.Send <- data
+	}
+
+	// Start pumps
+	go client.ReadPump()
+	go client.WritePump()
+}
+
+func (h *Handler) ValidateRoom(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["room_id"]
+
+	if h.hub.GetRoom(roomID) == nil {
+		http.Error(w, "Room not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
