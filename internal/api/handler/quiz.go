@@ -25,6 +25,48 @@ func NewQuizHandler(quizService *service.QuizService, userService *service.UserS
 	}
 }
 
+func (h *QuizHandler) GenerateQuiz(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Title        string `json:"title"`
+		Category     string `json:"category"`
+		Difficulty   string `json:"difficulty"`
+		Description  string `json:"description"`
+		NumQuestions int    `json:"num_questions"`
+		Points       int    `json:"points"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate basic inputs if necessary
+	if req.NumQuestions <= 0 {
+		req.NumQuestions = 5 // Default
+	}
+	if req.Points <= 0 {
+		req.Points = 100 // Default
+	}
+
+	generatedQuiz, err := h.quizService.GenerateQuiz(
+		r.Context(),
+		req.Title,
+		req.Category,
+		req.Difficulty,
+		req.Description,
+		req.NumQuestions,
+		req.Points,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(generatedQuiz)
+}
+
 func (h *QuizHandler) CreateQuiz(w http.ResponseWriter, r *http.Request) {
 	var quiz model.Quiz
 	if err := json.NewDecoder(r.Body).Decode(&quiz); err != nil {
