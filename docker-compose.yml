@@ -35,6 +35,18 @@ services:
     restart: always
     # networks:
     #   - backend
+  redis-comander:
+    container_name: redis-commander
+    hostname: redis-commander
+    image: ghrc.io/jeoferner/redis-commander:latest
+    restart: always
+    environment:
+      - REDIS_HOSTS=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    ports:
+      - "8081:8081"
+    user: redis
+    # 
 
 volumes:
   redis_data:
